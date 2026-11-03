@@ -99,6 +99,13 @@ button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--dan
 .chip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 9em; }
 .chip .ct { font: 700 14px/1 var(--display); color: var(--muted); font-variant-numeric: tabular-nums; }
 .chip.turn { border-color: var(--c); }
+.chip .tm { font: 700 14px/1 var(--display); font-variant-numeric: tabular-nums; padding: 3px 7px; border-radius: 999px; background: var(--bg); color: var(--muted); }
+.chip.turn .tm { background: var(--c); color: #fff; }
+.chip .tm.low { background: var(--danger); color: #fff; }
+.chip.flag .nm::after { content: " · out of time"; color: var(--danger); font-weight: 600; font-size: 12px; }
+.settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.settings select { width: 100%; }
+.info { color: var(--muted); font-size: 13px; font-weight: 600; margin: 0; }
 .chip.out { opacity: .4; text-decoration: line-through; }
 .chip.off .nm::after { content: " · offline"; color: var(--danger); font-weight: 600; font-size: 12px; }
 .status { font: 700 18px/1.3 var(--display); min-height: 1.3em; display: flex; align-items: center; gap: 8px; text-wrap: balance; }
@@ -125,12 +132,9 @@ button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--dan
   transition: background-color .15s;
   animation: grow .18s ease-out;
 }
-.dot { position: absolute; width: 18%; height: 18%; border-radius: 50%; background: #fff; transform: translate(-50%, -50%); }
-.n1 .dot:nth-child(1) { left: 50%; top: 50%; }
-.n2 .dot:nth-child(1) { left: 33%; top: 50%; } .n2 .dot:nth-child(2) { left: 67%; top: 50%; }
-.n3 .dot:nth-child(1) { left: 50%; top: 32%; } .n3 .dot:nth-child(2) { left: 32%; top: 64%; } .n3 .dot:nth-child(3) { left: 68%; top: 64%; }
-.n4 .dot:nth-child(1) { left: 33%; top: 33%; } .n4 .dot:nth-child(2) { left: 67%; top: 33%; }
-.n4 .dot:nth-child(3) { left: 33%; top: 67%; } .n4 .dot:nth-child(4) { left: 67%; top: 67%; }
+.dot { position: absolute; width: var(--d, 18%); height: var(--d, 18%); border-radius: 50%; background: #fff; transform: translate(-50%, -50%); }
+.blob.ready { animation: grow .18s ease-out, wobble 1.6s ease-in-out .2s infinite; }
+@keyframes wobble { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
 .burst { position: absolute; inset: 9%; border-radius: 50%; background: var(--c); animation: burst .32s ease-out forwards; pointer-events: none; }
 @keyframes grow { from { transform: scale(.4); } to { transform: scale(1); } }
 @keyframes burst { from { transform: scale(.9); opacity: .9; } to { transform: scale(1.9); opacity: 0; } }
@@ -144,7 +148,7 @@ button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--dan
 .win-title { font: 800 30px/1.1 var(--display); margin: 0; overflow-wrap: anywhere; }
 
 @media (prefers-reduced-motion: reduce) {
-  .blob, .burst { animation: none; }
+  .blob, .blob.ready, .burst { animation: none; }
   .burst { display: none; }
 }
 </style>
@@ -170,10 +174,10 @@ button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--dan
     </div>
     <p class="error" id="home-error" hidden></p>
     <ol class="rules">
-      <li>Your <b>first move</b> drops a 3-dot blob on any empty square.</li>
+      <li>Your <b>first move</b> drops a blob one dot short of popping on any empty square.</li>
       <li>After that you can only tap <b>your own</b> blobs to add a dot.</li>
-      <li>At <b>4 dots</b> a blob bursts, sending one dot to each neighbour and taking them over. Bursts chain.</li>
-      <li>Lose all your blobs and you're out. <b>Last color standing wins.</b></li>
+      <li>When it reaches the <b>pop count</b> (4 dots by default, 2–8 in the lobby) a blob bursts, sending one dot to each neighbour (two at 8) and taking them over; any extra dots stay behind. Bursts chain.</li>
+      <li>Lose all your blobs, or run out of time with the clock on, and you're out. <b>Last color standing wins.</b></li>
     </ol>
   </section>
 
@@ -195,11 +199,11 @@ button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--dan
         <input id="local-name" maxlength="16" placeholder="Name">
         <button class="ghost small" id="add-local">Add</button>
       </div>
-      <label for="size">Board</label>
-      <select id="size"></select>
+      <div class="settings" id="settings"></div>
       <button id="start">Start game</button>
     </div>
     <p class="note" id="wait-note" hidden>Waiting for the host to start the game.</p>
+    <p class="info" id="lobby-info"></p>
     <div class="row"><button class="ghost small danger" id="leave-lobby">Leave</button></div>
   </section>
 
@@ -211,6 +215,7 @@ button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--dan
         <button class="small" id="reconnect">Reconnect</button>
       </div>
       <div class="chips" id="chips"></div>
+      <p class="info" id="info"></p>
       <div class="status" id="status"></div>
       <div class="board-wrap"><div class="board" id="board"></div></div>
       <div class="game-foot">
@@ -238,12 +243,59 @@ const colorFor = i => i < PALETTE.length ? PALETTE[i] : `hsl(${Math.round((i * 1
 const autoSize = n => Math.min(15, Math.max(5, Math.ceil(Math.sqrt(n * 5))));
 const clone = o => JSON.parse(JSON.stringify(o));
 
-function newGame(players, size) {
+// Every game option lives here: the lobby draws a control per entry, the summary line reads `summary`,
+// and newGame() reads the values. A new option is one more entry (plus whatever rule uses it).
+const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+const SETTINGS = [
+  { key: "size", label: "Board", def: 0,
+    options: n => [[0, `Auto (${autoSize(n)}×${autoSize(n)})`], ...range(4, 15).map(k => [k, `${k}×${k}`])],
+    summary: (v, n) => `${v || autoSize(n)}×${v || autoSize(n)}` },
+  { key: "popAt", label: "Pops at", def: 4,
+    options: () => range(2, 8).map(k => [k, `${k} dots`]),
+    summary: v => `pops at ${v}` },
+  { key: "clock", label: "Clock", def: 0,
+    options: () => [[0, "Off"], [30, "30 s"], [60, "1 min"], [120, "2 min"], [180, "3 min"], [300, "5 min"], [600, "10 min"]],
+    summary: v => v ? `${v < 60 ? v + " s" : v / 60 + " min"} each` : "" },
+  { key: "inc", label: "Per move", def: 0, hidden: st => !st.clock,
+    options: () => [[0, "+0 s"], [1, "+1 s"], [2, "+2 s"], [3, "+3 s"], [5, "+5 s"], [10, "+10 s"]],
+    summary: (v, n, st) => st.clock && v ? `+${v} s per move` : "" },
+];
+function readSettings(st = {}) {
+  const out = {};
+  for (const d of SETTINGS) {
+    const v = Number(st[d.key]);
+    out[d.key] = d.options(2).some(([k]) => k === v) || (d.key === "size" && v >= 4 && v <= 15) ? v : d.def;
+  }
+  return out;
+}
+function describeSettings(st, n) {
+  return SETTINGS.filter(d => !d.hidden || !d.hidden(st)).map(d => d.summary(st[d.key], n, st)).filter(Boolean).join(" · ");
+}
+
+function newGame(players, settings) {
+  const st = readSettings(settings), size = st.size || autoSize(players.length);
   return {
-    size, seq: 0, turn: 0, winner: -1, last: -1,
+    size, popAt: st.popAt, seq: 0, turn: 0, winner: -1, last: -1,
     cells: Array.from({ length: size * size }, () => ({ o: -1, n: 0 })),
     players: players.map(p => ({ name: p.name, color: p.color, moved: false, out: false })),
+    clock: st.clock ? { left: players.map(() => st.clock * 1000), inc: st.inc * 1000, turnAt: 0 } : null,
   };
+}
+
+// Chess clock: `left` is each player's bank at the start of the current turn; the player on turn
+// has been spending since `turnAt` (a time in the future means their turn hasn't started yet).
+function clockLeft(g, i, now) {
+  if (!g.clock) return null;
+  let t = g.clock.left[i];
+  if (i === g.turn && g.winner === -1 && !g.players[i].out && now > g.clock.turnAt) t -= now - g.clock.turnAt;
+  return Math.max(0, t);
+}
+// After a state change: charge the mover (if any) and start the next turn's clock at `startAt`.
+function retime(prev, next, mover, now, startAt) {
+  if (!next.clock) return next;
+  if (mover != null) next.clock.left[mover] = clockLeft(prev, mover, now) + next.clock.inc;
+  if (mover != null || prev.turn !== next.turn) next.clock.turnAt = startAt;
+  return next;
 }
 
 function counts(s) {
@@ -293,17 +345,21 @@ function advance(s) {
 function play(s0, i) {
   if (!canPlay(s0, i)) return null;
   const s = clone(s0), seat = s.turn, p = s.players[seat], c = s.cells[i];
-  if (!p.moved) { c.o = seat; c.n = 3; p.moved = true; } else c.n++;
+  if (!p.moved) { c.o = seat; c.n = s.popAt - 1; p.moved = true; } else c.n++;
   const waves = [{ cells: clone(s.cells), burst: [] }];
   for (let guard = 0; guard < 2000; guard++) {
     const full = [];
-    s.cells.forEach((x, j) => { if (x.n >= 4) full.push(j); });
+    s.cells.forEach((x, j) => { if (x.n >= s.popAt) full.push(j); });
     if (!full.length) break;
+    // A burst throws `per` dots in each of 4 directions (dots aimed off the
+    // board are lost) and keeps whatever is left over, so pop counts above 4
+    // don't destroy dots.
+    const per = Math.max(1, Math.floor(s.popAt / 4)), spent = Math.min(s.popAt, 4 * per);
     for (const j of full) {
       const x = s.cells[j];
-      x.n -= 4;
+      x.n -= spent;
       if (x.n === 0) x.o = -1;
-      for (const k of neighbors(s.size, j)) { s.cells[k].n++; s.cells[k].o = seat; }
+      for (const k of neighbors(s.size, j)) { s.cells[k].n += per; s.cells[k].o = seat; }
     }
     waves.push({ cells: clone(s.cells), burst: full });
     if (settle(s)) break;
@@ -329,7 +385,7 @@ function removePlayer(s0, seat) {
 // ENGINE END
 
 if (typeof module !== "undefined") {
-  module.exports = { newGame, play, removePlayer, canPlay, counts, autoSize, colorFor };
+  module.exports = { newGame, play, removePlayer, canPlay, counts, autoSize, colorFor, clockLeft, retime, readSettings, describeSettings, SETTINGS };
 } else {
 (() => {
 const $ = id => document.getElementById(id);
@@ -350,7 +406,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // ---- shared state ----
-// room: {phase: "lobby" | "game", code, size: 0 (auto) | n, seats: [{name, color, ctrl, online}], game}
+// room: {phase: "lobby" | "game", code, settings (see SETTINGS), seats: [{name, color, ctrl, online}], game}
 // ctrl is who drives a seat: "host" / "local-N" on the host's device, or a remote player's token.
 let role = null;          // "host" | "client"
 let room = null;          // latest room (host: authoritative; client: as last received)
@@ -361,6 +417,7 @@ const conns = new Map();  // host only: token -> DataConnection
 let localCounter = 0;
 let joinCode = null;
 let winDismissed = false;
+let clockOffset = 0;      // host clock minus ours, so clients can run the host's clocks
 
 $("name").value = store.get("cp-name") || "";
 const hashCode = location.hash.slice(1).toUpperCase();
@@ -382,14 +439,15 @@ function hostMine(token) {
 }
 function recolor() { room.seats.forEach((s, i) => s.color = colorFor(i)); }
 function broadcast(anim = null) {
-  for (const [token, c] of conns) if (c.open) c.send({ t: "room", room, mine: hostMine(token), anim });
+  const now = Date.now();
+  for (const [token, c] of conns) if (c.open) c.send({ t: "room", room, mine: hostMine(token), anim, now });
   receive(room, hostMine(null), anim);
 }
 
 function createGame() {
   role = "host";
   homeError("");
-  room = { phase: "lobby", code: newCode(), size: 0, seats: [{ name: myName(), color: colorFor(0), ctrl: "host", online: true }], game: null };
+  room = { phase: "lobby", code: newCode(), settings: readSettings(), seats: [{ name: myName(), color: colorFor(0), ctrl: "host", online: true }], game: null };
   broadcast();
   openHost();
 }
@@ -444,22 +502,42 @@ function dropSeat(ctrl) {
   const i = room.seats.findIndex(s => s.ctrl === ctrl);
   if (i < 0) return;
   if (room.phase === "lobby") { room.seats.splice(i, 1); recolor(); }
-  else { room.seats[i].online = false; room.game = removePlayer(room.game, i); }
+  else { room.seats[i].online = false; knockOut(i); return; }
   broadcast();
 }
 
+// Every change to a running game goes through here, so the clocks are always charged and restarted.
+function commit(next, mover, anim, delay = 0) {
+  const now = Date.now();
+  room.game = retime(room.game, next, mover, now, now + delay);
+  broadcast(anim);
+}
+
 function hostMove(cell) {
-  const r = play(room.game, cell);
+  const g = room.game;
+  if (g.clock && clockLeft(g, g.turn, Date.now()) <= 0) return checkFlag();
+  const r = play(g, cell);
   if (!r) return;
-  room.game = r.state;
-  broadcast(cell);
+  commit(r.state, g.turn, cell, waveDelays(r.waves).reduce((a, b) => a + b, 0));
+}
+
+function knockOut(seat, flagged = false) {
+  const next = removePlayer(room.game, seat);
+  if (next === room.game) return broadcast();
+  if (flagged) { next.players[seat].flagged = true; next.clock.left[seat] = 0; }
+  commit(next, null, null);
+}
+
+function checkFlag() {
+  const g = room && room.phase === "game" ? room.game : null;
+  if (role === "host" && g && g.clock && g.winner === -1 && clockLeft(g, g.turn, Date.now()) <= 0) knockOut(g.turn, true);
 }
 
 function startGame() {
   if (room.seats.length < 2) return;
-  const size = room.size || autoSize(room.seats.length);
   room.phase = "game";
-  room.game = newGame(room.seats, size);
+  room.game = newGame(room.seats, room.settings);
+  if (room.game.clock) room.game.clock.turnAt = Date.now();
   broadcast();
 }
 
@@ -497,7 +575,7 @@ function connectToHost() {
   hostConn = peer.connect(peerId(joinCode), { reliable: true });
   hostConn.on("open", () => { hostConn.send({ t: "hello", name: myName(), token: TOKEN }); $("lost").hidden = true; });
   hostConn.on("data", msg => {
-    if (msg && msg.t === "room") receive(msg.room, msg.mine, msg.anim);
+    if (msg && msg.t === "room") { if (typeof msg.now === "number") clockOffset = msg.now - Date.now(); receive(msg.room, msg.mine, msg.anim); }
     if (msg && msg.t === "kicked") { leave(); homeError("The host removed you from the game."); }
   });
   hostConn.on("close", () => { if (role === "client" && room) { $("lost").hidden = false; if (room.phase === "lobby") leave("The host closed the game."); } });
@@ -547,9 +625,10 @@ async function pump() {
       const res = play(view, anim);
       if (res) {
         room = r; mine = m; renderChrome(view, true);
-        for (const w of res.waves) {
-          drawBoard(view, w.cells, w.burst, anim);
-          await sleep(reduced ? 60 : (w.burst.length ? 260 : 140));
+        const delays = waveDelays(res.waves);
+        for (let k = 0; k < res.waves.length; k++) {
+          drawBoard(view, res.waves[k].cells, res.waves[k].burst, anim);
+          await sleep(delays[k]);
         }
       }
     }
@@ -559,6 +638,14 @@ async function pump() {
   }
   busy = false;
   render();
+}
+
+// How long each burst wave stays on screen. Long chains (low pop counts) speed up so a turn never
+// animates for more than ~6 s. The host also uses the total to start the next player's clock after it.
+function waveDelays(waves) {
+  const d = waves.map((w, k) => reduced ? 60 : !w.burst.length ? 140 : k < 10 ? 260 : k < 30 ? 120 : 50);
+  const total = d.reduce((a, b) => a + b, 0), cap = 6000;
+  return total > cap ? d.map(x => x * cap / total) : d;
 }
 
 // ---- rendering ----
@@ -597,14 +684,54 @@ function renderLobby() {
     }
     return li;
   }));
+  $("lobby-info").textContent = host ? "" : "Game: " + describeSettings(room.settings, room.seats.length);
   if (host) {
-    const sel = $("size"), auto = autoSize(room.seats.length);
-    const opts = [`<option value="0">Auto (${auto}×${auto})</option>`];
-    for (let n = 4; n <= 15; n++) opts.push(`<option value="${n}">${n}×${n}</option>`);
-    if (sel.options.length !== opts.length || sel.options[0].text !== `Auto (${auto}×${auto})`) { sel.innerHTML = opts.join(""); }
-    sel.value = String(room.size);
+    renderSettings();
     $("start").disabled = room.seats.length < 2;
     $("start").textContent = room.seats.length < 2 ? "Need at least 2 players" : `Start game · ${room.seats.length} players`;
+  }
+}
+
+// One labelled select per SETTINGS entry, built once and updated in place (so an open dropdown survives a re-render).
+function renderSettings() {
+  const box = $("settings"), st = room.settings, n = room.seats.length;
+  for (const d of SETTINGS) {
+    let field = document.getElementById("setf-" + d.key);
+    if (!field) {
+      field = document.createElement("div");
+      field.className = "field"; field.id = "setf-" + d.key;
+      const lb = document.createElement("label"); lb.htmlFor = "set-" + d.key; lb.textContent = d.label;
+      const sel = document.createElement("select"); sel.id = "set-" + d.key;
+      sel.onchange = () => { room.settings[d.key] = Number(sel.value); broadcast(); };
+      field.append(lb, sel);
+      box.append(field);
+    }
+    const sel = field.querySelector("select"), opts = d.options(n);
+    const sig = opts.map(o => o.join("=")).join("|");
+    if (sel.dataset.sig !== sig) {
+      sel.dataset.sig = sig;
+      sel.replaceChildren(...opts.map(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; return o; }));
+    }
+    sel.value = String(st[d.key]);
+    field.hidden = !!(d.hidden && d.hidden(st));
+  }
+}
+
+function fmtClock(ms) {
+  if (ms < 10000) return (Math.floor(ms / 100) / 10).toFixed(1);
+  const t = Math.ceil(ms / 1000);
+  return Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0");
+}
+
+// Clocks read the newest game state (not the animating one), on the host's time.
+function updateClocks() {
+  const g = room && room.phase === "game" ? room.game : null;
+  if (!g || !g.clock) return;
+  const now = Date.now() + clockOffset;
+  for (const el of document.querySelectorAll("#chips .tm")) {
+    const ms = clockLeft(g, Number(el.dataset.i), now);
+    el.textContent = fmtClock(ms);
+    el.classList.toggle("low", ms < 10000 && !g.players[el.dataset.i].out);
   }
 }
 
@@ -615,13 +742,16 @@ function renderChrome(g, animating) {
   $("chips").replaceChildren(...g.players.map((p, i) => {
     const d = document.createElement("div");
     const seat = room.seats[i];
-    d.className = "chip" + (i === g.turn && g.winner === -1 ? " turn" : "") + (p.out ? " out" : "") + (seat && !seat.online && !p.out ? " off" : "");
+    d.className = "chip" + (i === g.turn && g.winner === -1 ? " turn" : "") + (p.out ? " out" : "") + (p.flagged ? " flag" : "") + (seat && !seat.online && !p.out ? " off" : "");
     d.style.setProperty("--c", p.color);
     const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = p.name + (isYou(i) ? " (you)" : "");
     const ct = document.createElement("span"); ct.className = "ct"; ct.textContent = p.moved ? c[i] : "–";
     d.append(swatch(p.color), nm, ct);
+    if (g.clock) { const tm = document.createElement("span"); tm.className = "tm"; tm.dataset.i = i; d.append(tm); }
     return d;
   }));
+  updateClocks();
+  $("info").textContent = describeSettings(room.settings, g.players.length);
   const st = $("status"), cur = g.players[g.turn];
   st.replaceChildren();
   if (g.winner >= 0) st.append(swatch(g.players[g.winner].color), `${g.players[g.winner].name} wins!`);
@@ -664,16 +794,21 @@ function drawBoard(g, cells, burst, last) {
     el.classList.toggle("can", can);
     el.classList.toggle("last", i === last);
     el.setAttribute("aria-label", x.o < 0 ? "empty" : `${g.players[x.o].name}, ${x.n} dots`);
-    const key = x.o < 0 ? "" : x.o + ":" + Math.min(x.n, 4);
+    const k = Math.min(x.n, g.popAt);
+    const key = x.o < 0 ? "" : x.o + ":" + k;
     if (el.dataset.k !== key) {
       el.dataset.k = key;
       el.replaceChildren();
       if (x.o >= 0 && x.n > 0) {
         const bl = document.createElement("div");
-        const k = Math.min(x.n, 4);
-        bl.className = "blob n" + k;
+        bl.className = "blob" + (k === g.popAt - 1 ? " ready" : "");
         bl.style.setProperty("--c", g.players[x.o].color);
-        for (let d = 0; d < k; d++) { const dot = document.createElement("i"); dot.className = "dot"; bl.append(dot); }
+        bl.style.setProperty("--d", k <= 4 ? "18%" : k <= 6 ? "15%" : "13%");
+        for (const [left, top] of dotLayout(k)) {
+          const dot = document.createElement("i"); dot.className = "dot";
+          dot.style.left = left + "%"; dot.style.top = top + "%";
+          bl.append(dot);
+        }
         el.append(bl);
       }
     }
@@ -685,6 +820,18 @@ function drawBoard(g, cells, burst, last) {
       el.append(fx);
     }
   });
+}
+
+// Dot positions (percent of the blob) for 1–8 dots: dice faces up to 5, then a ring around a centre dot.
+function dotLayout(k) {
+  const fixed = { 1: [[50, 50]], 2: [[33, 50], [67, 50]], 3: [[50, 32], [32, 64], [68, 64]],
+    4: [[33, 33], [67, 33], [33, 67], [67, 67]], 5: [[30, 30], [70, 30], [50, 50], [30, 70], [70, 70]] };
+  if (fixed[k]) return fixed[k];
+  const ring = Array.from({ length: k - 1 }, (_, j) => {
+    const a = -Math.PI / 2 + j * 2 * Math.PI / (k - 1);
+    return [50 + 27 * Math.cos(a), 50 + 27 * Math.sin(a)];
+  });
+  return [[50, 50], ...ring];
 }
 
 function onCell(i) {
@@ -717,7 +864,6 @@ $("add-local").onclick = () => {
   broadcast();
 };
 $("local-name").addEventListener("keydown", e => { if (e.key === "Enter") $("add-local").click(); });
-$("size").onchange = () => { room.size = Number($("size").value); broadcast(); };
 $("start").onclick = startGame;
 $("again").onclick = backToLobby;
 $("close-win").onclick = () => { winDismissed = true; $("win").hidden = true; };
@@ -725,9 +871,9 @@ $("remove-turn").onclick = () => {
   const btn = $("remove-turn");
   if (btn.dataset.confirm !== "1") { btn.dataset.confirm = "1"; btn.textContent = "Tap again to remove"; setTimeout(() => { btn.dataset.confirm = ""; render(); }, 3000); return; }
   btn.dataset.confirm = "";
-  room.game = removePlayer(room.game, room.game.turn);
-  broadcast();
+  knockOut(room.game.turn);
 };
+setInterval(() => { updateClocks(); checkFlag(); }, 100);
 for (const id of ["leave-lobby", "leave-game"]) $(id).onclick = () => {
   const btn = $(id);
   const risky = role === "host" && room && room.seats.length > 1;

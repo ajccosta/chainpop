@@ -11,6 +11,12 @@ A chain-reaction territory game for any number of players, playable online in th
 - At 4 dots a blob bursts, sending one dot to each neighbour and taking them over. Bursts chain.
 - Lose all your blobs and you're out. Last color standing wins.
 
+The host can change the settings in the lobby:
+
+- **Pops at**: 2 to 8 dots (default 4). Your first blob starts one dot short of popping. At 8, a burst sends two dots to each neighbour, and any extra dots stay in the blob.
+- **Clock**: chess-style clocks from 30 s to 10 min per player, with an optional bonus per move. Run out of time and you're out.
+- **Board**: from 4×4 to 15×15, or sized automatically for the number of players.
+
 ## Playing online
 
 One player clicks **Create game** and shares the 5-character code or invite link. Everyone else joins from their own browser. The host can also add players on their own device for pass-and-play.
