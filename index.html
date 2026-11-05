@@ -568,8 +568,10 @@ function checkFlag() {
   const g = room && room.phase === "game" ? room.game : null;
   if (role !== "host" || !g || g.winner !== -1) return;
   const now = Date.now();
-  if (g.clock && clockLeft(g, g.turn, now) <= 0) knockOut(g.turn, true);
-  else if (g.turnTimer && turnLeft(g, now) <= 0) timeOutTurn(now);
+  const clockDeadline = g.clock ? g.clock.turnAt + g.clock.left[g.turn] : Infinity;
+  const turnDeadline = g.turnTimer ? g.turnTimer.turnAt + g.turnTimer.limit : Infinity;
+  if (clockDeadline <= now && clockDeadline <= turnDeadline) knockOut(g.turn, true);
+  else if (turnDeadline <= now) timeOutTurn(turnDeadline);
 }
 
 function startGame() {
