@@ -16,6 +16,7 @@ The host can change the settings in the lobby:
 - **Pops at**: 2 to 8 dots (default 4). Your first blob starts one dot short of popping. At 8, a burst sends two dots to each neighbour, and any extra dots stay in the blob.
 - **Clock**: chess-style clocks from 30 s to 10 min per player, with an optional bonus per move. Run out of time and you're out.
 - **Board**: from 4×4 to 15×15, or sized automatically for the number of players.
+- **Random starts**: off by default. When on, each player starts with a random non-adjacent blob instead of choosing an opening square.
 
 ## Playing online
 
