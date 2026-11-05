@@ -15,6 +15,7 @@ The host can change the settings in the lobby:
 
 - **Pops at**: 2 to 8 dots (default 4). Your first blob starts one dot short of popping. At 8, a burst sends two dots to each neighbour, and any extra dots stay in the blob.
 - **Clock**: chess-style clocks from 30 s to 10 min per player, with an optional bonus per move. Run out of time and you're out.
+- **Turn timer**: limit each turn to 10 s – 1 min (off by default). The allowance starts over every turn; if you run out, your turn is skipped, you stay in the game, and you can still lose by the Clock. Works with or without the Clock.
 - **Board**: from 4×4 to 15×15, or sized automatically for the number of players.
 
 ## Playing online
