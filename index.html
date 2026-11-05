@@ -102,6 +102,8 @@ button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--dan
 .chip .tm { font: 700 14px/1 var(--display); font-variant-numeric: tabular-nums; padding: 3px 7px; border-radius: 999px; background: var(--bg); color: var(--muted); }
 .chip.turn .tm { background: var(--c); color: #fff; }
 .chip .tm.low { background: var(--danger); color: #fff; }
+.chip .tt { font: 700 13px/1 var(--display); font-variant-numeric: tabular-nums; padding: 1px 6px; border-radius: 999px; border: 2px solid var(--c); color: var(--ink); }
+.chip .tt.low { background: var(--danger); border-color: var(--danger); color: #fff; }
 .chip.flag .nm::after { content: " · out of time"; color: var(--danger); font-weight: 600; font-size: 12px; }
 .settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
 .settings select { width: 100%; }
@@ -177,7 +179,7 @@ button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--dan
       <li>Your <b>first move</b> drops a blob one dot short of popping on any empty square.</li>
       <li>After that you can only tap <b>your own</b> blobs to add a dot.</li>
       <li>When it reaches the <b>pop count</b> (4 dots by default, 2–8 in the lobby) a blob bursts, sending one dot to each neighbour (two at 8) and taking them over; any extra dots stay behind. Bursts chain.</li>
-      <li>Lose all your blobs, or run out of time with the clock on, and you're out. <b>Last color standing wins.</b></li>
+      <li>Lose all your blobs, or run out of time with the clock on, and you're out. With the turn timer on, taking too long on a turn just skips it. <b>Last color standing wins.</b></li>
     </ol>
   </section>
 
@@ -259,6 +261,9 @@ const SETTINGS = [
   { key: "inc", label: "Per move", def: 0, hidden: st => !st.clock,
     options: () => [[0, "+0 s"], [1, "+1 s"], [2, "+2 s"], [3, "+3 s"], [5, "+5 s"], [10, "+10 s"]],
     summary: (v, n, st) => st.clock && v ? `+${v} s per move` : "" },
+  { key: "turnTime", label: "Turn timer", def: 0,
+    options: () => [[0, "Off"], [10, "10 s"], [15, "15 s"], [20, "20 s"], [30, "30 s"], [45, "45 s"], [60, "1 min"]],
+    summary: v => v ? `${v < 60 ? v + " s" : v / 60 + " min"} per turn` : "" },
 ];
 function readSettings(st = {}) {
   const out = {};
@@ -275,10 +280,11 @@ function describeSettings(st, n) {
 function newGame(players, settings) {
   const st = readSettings(settings), size = st.size || autoSize(players.length);
   return {
-    size, popAt: st.popAt, seq: 0, turn: 0, winner: -1, last: -1,
+    size, popAt: st.popAt, seq: 0, turn: 0, winner: -1, last: -1, timedOut: -1,
     cells: Array.from({ length: size * size }, () => ({ o: -1, n: 0 })),
     players: players.map(p => ({ name: p.name, color: p.color, moved: false, out: false })),
     clock: st.clock ? { left: players.map(() => st.clock * 1000), inc: st.inc * 1000, turnAt: 0 } : null,
+    turnTimer: st.turnTime ? { limit: st.turnTime * 1000, turnAt: 0 } : null,
   };
 }
 
@@ -290,11 +296,21 @@ function clockLeft(g, i, now) {
   if (i === g.turn && g.winner === -1 && !g.players[i].out && now > g.clock.turnAt) t -= now - g.clock.turnAt;
   return Math.max(0, t);
 }
-// After a state change: charge the mover (if any) and start the next turn's clock at `startAt`.
+// Turn timer: a fixed allowance per turn that starts over whenever the turn passes to someone else
+// (unlike the chess clock, nothing carries over). `turnAt` works like the chess clock's: a time in
+// the future means the turn hasn't started yet. Returns ms left, or null when the timer is off.
+function turnLeft(g, now) {
+  if (!g.turnTimer || g.winner !== -1) return null;
+  return Math.max(0, g.turnTimer.limit - Math.max(0, now - g.turnTimer.turnAt));
+}
+// After a state change: charge the mover (if any) and start the next turn's timers at `startAt`.
 function retime(prev, next, mover, now, startAt) {
-  if (!next.clock) return next;
-  if (mover != null) next.clock.left[mover] = clockLeft(prev, mover, now) + next.clock.inc;
-  if (mover != null || prev.turn !== next.turn) next.clock.turnAt = startAt;
+  const turnChanged = mover != null || prev.turn !== next.turn;
+  if (next.clock) {
+    if (mover != null) next.clock.left[mover] = clockLeft(prev, mover, now) + next.clock.inc;
+    if (turnChanged) next.clock.turnAt = startAt;
+  }
+  if (next.turnTimer && turnChanged) next.turnTimer.turnAt = startAt;
   return next;
 }
 
@@ -345,6 +361,7 @@ function advance(s) {
 function play(s0, i) {
   if (!canPlay(s0, i)) return null;
   const s = clone(s0), seat = s.turn, p = s.players[seat], c = s.cells[i];
+  s.timedOut = -1;
   if (!p.moved) { c.o = seat; c.n = s.popAt - 1; p.moved = true; } else c.n++;
   const waves = [{ cells: clone(s.cells), burst: [] }];
   for (let guard = 0; guard < 2000; guard++) {
@@ -371,6 +388,16 @@ function play(s0, i) {
   return { state: s, waves };
 }
 
+// The turn timer ran out: the player on turn loses that turn (and stays in the game).
+function skipTurn(s0) {
+  if (s0.winner !== -1) return s0;
+  const s = clone(s0);
+  s.timedOut = s.turn;
+  s.seq++;
+  advance(s);
+  return s;
+}
+
 // Take a player out of a running game (left or was removed); their blobs are cleared.
 function removePlayer(s0, seat) {
   const s = clone(s0), p = s.players[seat];
@@ -385,7 +412,7 @@ function removePlayer(s0, seat) {
 // ENGINE END
 
 if (typeof module !== "undefined") {
-  module.exports = { newGame, play, removePlayer, canPlay, counts, autoSize, colorFor, clockLeft, retime, readSettings, describeSettings, SETTINGS };
+  module.exports = { newGame, play, removePlayer, canPlay, counts, autoSize, colorFor, clockLeft, turnLeft, skipTurn, retime, readSettings, describeSettings, SETTINGS };
 } else {
 (() => {
 const $ = id => document.getElementById(id);
@@ -515,7 +542,8 @@ function commit(next, mover, anim, delay = 0) {
 
 function hostMove(cell) {
   const g = room.game;
-  if (g.clock && clockLeft(g, g.turn, Date.now()) <= 0) return checkFlag();
+  const now = Date.now();
+  if ((g.clock && clockLeft(g, g.turn, now) <= 0) || (g.turnTimer && turnLeft(g, now) <= 0)) return checkFlag();
   const r = play(g, cell);
   if (!r) return;
   commit(r.state, g.turn, cell, waveDelays(r.waves).reduce((a, b) => a + b, 0));
@@ -528,9 +556,20 @@ function knockOut(seat, flagged = false) {
   commit(next, null, null);
 }
 
+// The turn timer ran out: skip the turn, but still charge the chess clock for the time spent.
+function timeOutTurn(now) {
+  const g = room.game, next = skipTurn(g);
+  if (next === g) return;
+  if (next.clock) next.clock.left[g.turn] = clockLeft(g, g.turn, now);
+  commit(next, null, null);
+}
+
 function checkFlag() {
   const g = room && room.phase === "game" ? room.game : null;
-  if (role === "host" && g && g.clock && g.winner === -1 && clockLeft(g, g.turn, Date.now()) <= 0) knockOut(g.turn, true);
+  if (role !== "host" || !g || g.winner !== -1) return;
+  const now = Date.now();
+  if (g.clock && clockLeft(g, g.turn, now) <= 0) knockOut(g.turn, true);
+  else if (g.turnTimer && turnLeft(g, now) <= 0) timeOutTurn(now);
 }
 
 function startGame() {
@@ -538,6 +577,7 @@ function startGame() {
   room.phase = "game";
   room.game = newGame(room.seats, room.settings);
   if (room.game.clock) room.game.clock.turnAt = Date.now();
+  if (room.game.turnTimer) room.game.turnTimer.turnAt = Date.now();
   broadcast();
 }
 
@@ -726,12 +766,19 @@ function fmtClock(ms) {
 // Clocks read the newest game state (not the animating one), on the host's time.
 function updateClocks() {
   const g = room && room.phase === "game" ? room.game : null;
-  if (!g || !g.clock) return;
+  if (!g || (!g.clock && !g.turnTimer)) return;
   const now = Date.now() + clockOffset;
   for (const el of document.querySelectorAll("#chips .tm")) {
     const ms = clockLeft(g, Number(el.dataset.i), now);
     el.textContent = fmtClock(ms);
     el.classList.toggle("low", ms < 10000 && !g.players[el.dataset.i].out);
+  }
+  // The turn timer only shows on the chip of the player whose turn it is.
+  const left = turnLeft(g, now);
+  for (const el of document.querySelectorAll("#chips .tt")) {
+    const live = left != null && Number(el.dataset.i) === g.turn && !g.players[g.turn].out;
+    el.hidden = !live;
+    if (live) { el.textContent = Math.ceil(left / 1000) + " s"; el.classList.toggle("low", left <= 5000); }
   }
 }
 
@@ -748,6 +795,7 @@ function renderChrome(g, animating) {
     const ct = document.createElement("span"); ct.className = "ct"; ct.textContent = p.moved ? c[i] : "–";
     d.append(swatch(p.color), nm, ct);
     if (g.clock) { const tm = document.createElement("span"); tm.className = "tm"; tm.dataset.i = i; d.append(tm); }
+    if (g.turnTimer) { const tt = document.createElement("span"); tt.className = "tt"; tt.dataset.i = i; tt.hidden = true; d.append(tt); }
     return d;
   }));
   updateClocks();
@@ -761,7 +809,8 @@ function renderChrome(g, animating) {
     const what = cur.moved ? `tap one of ${you ? "your" : "their"} blobs` : "drop a blob on any empty square";
     const seat = room.seats[g.turn];
     const knockedOut = mine.length && mine.every(i => g.players[i] && g.players[i].out) ? "You're out. " : "";
-    st.append(swatch(cur.color), myTurn ? `${you ? "Your" : cur.name + "'s"} turn: ${what}` : `${knockedOut}Waiting for ${cur.name}${seat && !seat.online ? " (offline)" : ""}…`);
+    const skipped = g.timedOut >= 0 && g.players[g.timedOut] ? `${g.players[g.timedOut].name} ran out of time. ` : "";
+    st.append(swatch(cur.color), skipped + (myTurn ? `${you ? "Your" : cur.name + "'s"} turn: ${what}` : `${knockedOut}Waiting for ${cur.name}${seat && !seat.online ? " (offline)" : ""}…`));
   }
   const b = $("board");
   b.style.setProperty("--c", cur ? cur.color : "transparent");
