@@ -97,7 +97,7 @@ First-player win rate varied from 8% to 62% across settings, but with 12 games p
 | 6 | 6×6 | 7×7 or 8×8 |
 | 8 | 7×7 | 8×8 |
 
-The current `autoSize` (`ceil(sqrt(5n))`, clamped to 5 to 15) gives 5×5 for 2 to 5 players, 6×6 for 6 and 7×7 for 8. That is close to the "Minimum" column and works, but is tight for 6 or more players. A cap around 8×8 or 9×9 is advisable.
+The old `autoSize` (`ceil(sqrt(5n))`, clamped to 5 to 15) gave 5×5 for 2 to 5 players, 6×6 for 6 and 7×7 for 8. That is close to the "Minimum" column, but tight for 6 or more players. `autoSize` now uses a lookup table (2 to 3 players: 6×6, 4 to 5: 7×7, 6 to 8: 8×8, with 5 and 7 players interpolated) and falls back to `ceil(sqrt(8n))` outside 2 to 8 players, which is unvalidated.
 
 ## Limitations
 

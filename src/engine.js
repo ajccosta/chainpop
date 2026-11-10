@@ -1,7 +1,10 @@
 // Pure game rules: no DOM, no shared state. Imported by the app and by test/engine.test.mjs.
 export const PALETTE = ["#e8473f", "#2f7de1", "#24a865", "#f2b417", "#8e5bd8", "#f07c2a", "#17a6a6", "#e0559a", "#7a8a1f", "#5b6bd8"];
 export const colorFor = i => i < PALETTE.length ? PALETTE[i] : `hsl(${Math.round((i * 137.508) % 360)} 68% 52%)`;
-export const autoSize = n => Math.min(15, Math.max(5, Math.ceil(Math.sqrt(n * 5))));
+// Board side by player count, informed by bot simulation (docs/bot-simulation.md).
+// 5 and 7 players are interpolated; more than 8 players is unvalidated.
+const AUTO_SIZE = { 2: 6, 3: 6, 4: 7, 5: 7, 6: 8, 7: 8, 8: 8 };
+export const autoSize = n => AUTO_SIZE[n] ?? Math.min(15, Math.max(5, Math.ceil(Math.sqrt(n * 8))));
 export const clone = o => JSON.parse(JSON.stringify(o));
 
 // Every game option lives here: the lobby draws a control per entry, the summary line reads `summary`,
