@@ -259,6 +259,9 @@ const SETTINGS = [
   { key: "inc", label: "Per move", def: 0, hidden: st => !st.clock,
     options: () => [[0, "+0 s"], [1, "+1 s"], [2, "+2 s"], [3, "+3 s"], [5, "+5 s"], [10, "+10 s"]],
     summary: (v, n, st) => st.clock && v ? `+${v} s per move` : "" },
+  { key: "randomStart", label: "Random starts", def: 0,
+    options: () => [[0, "Off"], [1, "On"]],
+    summary: v => v ? "random starts" : "" },
 ];
 function readSettings(st = {}) {
   const out = {};
@@ -272,14 +275,52 @@ function describeSettings(st, n) {
   return SETTINGS.filter(d => !d.hidden || !d.hidden(st)).map(d => d.summary(st[d.key], n, st)).filter(Boolean).join(" · ");
 }
 
+function randomInt(max) {
+  return crypto.getRandomValues(new Uint32Array(1))[0] % max;
+}
+function shuffle(list) {
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [list[i], list[j]] = [list[j], list[i]];
+  }
+  return list;
+}
+function randomStarts(size, players) {
+  const cells = Array.from({ length: size * size }, (_, i) => i);
+  for (let tries = 0; tries < 300; tries++) {
+    const chosen = [];
+    const blocked = new Set();
+    for (const i of shuffle(cells.slice())) {
+      if (blocked.has(i)) continue;
+      chosen.push(i);
+      blocked.add(i);
+      const r = Math.floor(i / size), c = i % size;
+      if (r > 0) blocked.add(i - size);
+      if (r < size - 1) blocked.add(i + size);
+      if (c > 0) blocked.add(i - 1);
+      if (c < size - 1) blocked.add(i + 1);
+      if (chosen.length === players) return chosen;
+    }
+  }
+  return null;
+}
+
 function newGame(players, settings) {
   const st = readSettings(settings), size = st.size || autoSize(players.length);
-  return {
-    size, popAt: st.popAt, seq: 0, turn: Math.floor(Math.random() * players.length), winner: -1, last: -1,
+  const game = {
+    size, popAt: st.popAt, seq: 0, turn: randomInt(players.length), winner: -1, last: -1,
     cells: Array.from({ length: size * size }, () => ({ o: -1, n: 0 })),
     players: players.map(p => ({ name: p.name, color: p.color, moved: false, out: false })),
     clock: st.clock ? { left: players.map(() => st.clock * 1000), inc: st.inc * 1000, turnAt: 0 } : null,
   };
+  if (st.randomStart) {
+    const starts = randomStarts(size, players.length);
+    if (starts) starts.forEach((cell, seat) => {
+      game.cells[cell] = { o: seat, n: game.popAt - 1 };
+      game.players[seat].moved = true;
+    });
+  }
+  return game;
 }
 
 // Chess clock: `left` is each player's bank at the start of the current turn; the player on turn
