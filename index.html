@@ -308,7 +308,7 @@ function randomStarts(size, players) {
 function newGame(players, settings) {
   const st = readSettings(settings), size = st.size || autoSize(players.length);
   const game = {
-    size, popAt: st.popAt, seq: 0, turn: 0, winner: -1, last: -1,
+    size, popAt: st.popAt, seq: 0, turn: randomInt(players.length), winner: -1, last: -1,
     cells: Array.from({ length: size * size }, () => ({ o: -1, n: 0 })),
     players: players.map(p => ({ name: p.name, color: p.color, moved: false, out: false })),
     clock: st.clock ? { left: players.map(() => st.clock * 1000), inc: st.inc * 1000, turnAt: 0 } : null,
