@@ -20,6 +20,13 @@ function setup(n, settings, blobs = {}) {
 
 const adjacent = (size, a, b) => neighbors(size, a).includes(b);
 
+test("autoSize: table for 2-8 players, formula fallback outside it", () => {
+  assert.deepEqual([2, 3, 4, 5, 6, 7, 8].map(autoSize), [6, 6, 7, 7, 8, 8, 8]);
+  assert.equal(autoSize(1), 5);
+  assert.equal(autoSize(10), 9);
+  assert.equal(autoSize(100), 15);
+});
+
 test("newGame: empty board, auto size, nobody has moved", () => {
   const g = newGame(seats(2), {});
   assert.equal(g.size, autoSize(2));
