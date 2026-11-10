@@ -23,3 +23,19 @@ The host can change the settings in the lobby:
 One player clicks **Create game** and shares the 5-character code or invite link. Everyone else joins from their own browser. The host can also add players on their own device for pass-and-play.
 
 Games run peer-to-peer (via [PeerJS](https://peerjs.com/)); the host's tab acts as the server, so keep it open until the game ends.
+
+## Run locally
+
+There's no build step. The code is plain ES modules in `src/`, and browsers don't load modules from `file://`, so opening `index.html` directly won't work. Serve the folder instead:
+
+```sh
+python -m http.server 8000
+```
+
+Then open http://localhost:8000/. The VS Code **Live Server** extension works too.
+
+To run the engine tests (Node 20 or newer):
+
+```sh
+node --test
+```
