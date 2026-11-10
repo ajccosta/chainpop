@@ -33,7 +33,7 @@ function openHost() {
     if (e.type === "unavailable-id") { state.peer.destroy(); state.room.code = newCode(); broadcast(); openHost(); }
     else if (e.type !== "peer-unavailable") setNetNote("Online connection problem (" + e.type + "). Local players still work.");
   });
-  peer.on("disconnected", () => { if (!state.peer.destroyed) state.peer.reconnect(); });
+  peer.on("disconnected", () => { if (state.peer && !state.peer.destroyed) state.peer.reconnect(); });
   peer.on("connection", conn => {
     conn.on("data", msg => onHostData(conn, msg));
     conn.on("close", () => onHostClose(conn));
