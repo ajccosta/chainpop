@@ -21,13 +21,14 @@ export function joinGame(code) {
     if (e.type === "peer-unavailable") clientFail(`No game found with code ${code}. Check the code, or ask the host if their game is still open.`);
     else clientFail("Couldn't connect (" + e.type + "). Try again.");
   });
-  peer.on("disconnected", () => { if (!state.peer.destroyed) state.peer.reconnect(); });
+  peer.on("disconnected", () => { if (state.peer && !state.peer.destroyed) state.peer.reconnect(); });
 }
 
 export function connectToHost() {
   const hostConn = state.hostConn = state.peer.connect(peerId(state.joinCode), { reliable: true });
   hostConn.on("open", () => { state.hostConn.send({ t: "hello", name: myName(), token: TOKEN }); $("lost").hidden = true; });
   hostConn.on("data", msg => {
+    if (state.role !== "client") return;
     if (msg && msg.t === "room") { if (typeof msg.now === "number") state.clockOffset = msg.now - Date.now(); receive(msg.room, msg.mine, msg.anim); }
     if (msg && msg.t === "kicked") { leave(); homeError("The host removed you from the game."); }
   });
